@@ -1,5 +1,7 @@
 import os
+import subprocess
 import sys
+from pathlib import Path
 from warnings import warn
 
 import numpy as np
@@ -301,26 +303,34 @@ class VivadoBackend(FPGABackend):
         fifo_opt=False,
     ):
         if 'linux' in sys.platform:
-            found = os.system('command -v vivado_hls > /dev/null')
+            found = os.system('command -v vitis-run > /dev/null')
             if found != 0:
-                raise Exception('Vivado HLS installation not found. Make sure "vivado_hls" is on PATH.')
+                raise Exception('Vitis installation not found. Make sure "vitis-run" is on PATH.')
 
-        curr_dir = os.getcwd()
-        os.chdir(model.config.get_output_dir())
-        vivado_cmd = (
-            f'vivado_hls -f build_prj.tcl "reset={reset} '
-            f'csim={csim} '
-            f'synth={synth} '
-            f'cosim={cosim} '
-            f'validation={validation} '
-            f'export={export} '
-            f'vsynth={vsynth} '
-            f'fifo_opt={fifo_opt}"'
+        build_opts = (
+            'array set opt {\n'
+            f'    reset      {int(reset)}\n'
+            f'    csim       {int(csim)}\n'
+            f'    synth      {int(synth)}\n'
+            f'    cosim      {int(cosim)}\n'
+            f'    validation {int(validation)}\n'
+            f'    export     {int(export)}\n'
+            f'    vsynth     {int(vsynth)}\n'
+            f'    fifo_opt   {int(fifo_opt)}\n'
+            '}\n'
         )
-        os.system(vivado_cmd)
-        os.chdir(curr_dir)
 
-        return parse_vivado_report(model.config.get_output_dir())
+        output_dir = model.config.get_output_dir()
+        tcl_path = Path(output_dir) / 'build_opt.tcl'
+        with open(tcl_path, 'w') as f:
+            f.write(build_opts)
+
+        process = subprocess.Popen(
+            'vitis-run --mode hls --tcl build_prj.tcl', shell=True, cwd=output_dir, text=True
+        )
+        process.communicate()
+
+        return parse_vivado_report(output_dir)
 
     @layer_optimizer(Layer)
     def init_base_layer(self, layer):

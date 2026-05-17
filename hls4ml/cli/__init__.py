@@ -3,7 +3,9 @@
 import argparse
 import json
 import os
+import subprocess
 import sys
+from pathlib import Path
 
 import h5py
 import yaml
@@ -210,28 +212,33 @@ def _build_vivado(args, extra_args):
     if vivado_args.all:
         csim = synth = cosim = validation = export = vsynth = 1
 
-    # Check if vivado_hls is available
+    # Check if vitis-run is available
     if 'linux' in sys.platform or 'darwin' in sys.platform:
-        found = os.system('command -v vivado_hls > /dev/null')
+        found = os.system('command -v vitis-run > /dev/null')
         if found != 0:
-            print('Vivado HLS installation not found. Make sure "vivado_hls" is on PATH.')
+            print('Vitis installation not found. Make sure "vitis-run" is on PATH.')
             sys.exit(1)
 
-    os.system(
-        (
-            'cd {dir} && vivado_hls -f build_prj.tcl "reset={reset} csim={csim} synth={synth} cosim={cosim} '
-            'validation={validation} export={export} vsynth={vsynth}"'
-        ).format(
-            dir=args.project,
-            reset=reset,
-            csim=csim,
-            synth=synth,
-            cosim=cosim,
-            validation=validation,
-            export=export,
-            vsynth=vsynth,
-        )
+    build_opts = (
+        'array set opt {\n'
+        f'    reset      {reset}\n'
+        f'    csim       {csim}\n'
+        f'    synth      {synth}\n'
+        f'    cosim      {cosim}\n'
+        f'    validation {validation}\n'
+        f'    export     {export}\n'
+        f'    vsynth     {vsynth}\n'
+        '    fifo_opt   0\n'
+        '}\n'
     )
+    tcl_path = Path(args.project) / 'build_opt.tcl'
+    with open(tcl_path, 'w') as f:
+        f.write(build_opts)
+
+    process = subprocess.Popen(
+        'vitis-run --mode hls --tcl build_prj.tcl', shell=True, cwd=args.project, text=True
+    )
+    process.communicate()
 
 
 def _build_quartus(args, extra_args):
